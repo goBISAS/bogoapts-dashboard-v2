@@ -37,62 +37,59 @@ def safe_sum(df, column):
 # ==========================================================
 # 2. CONFIGURACIÓN DE DATOS (DATA LAKE)
 # ==========================================================
-ID_MAESTRO = "1Qkw-Fi3tLvY68maHxJOmHlX9sx0kOvNg-150YRE42W0"
+# ¡ID Verificado y corregido con tu enlace exacto!
+ID_MAESTRO = "170xDwjP194VX4QgW17lhM4dQyH9qIbMPaI4oXL_RP-I"
 
 url_google = get_csv_url(ID_MAESTRO, "Raw_GoogleAds")
 url_meta = get_csv_url(ID_MAESTRO, "Raw_MetaAds")
 
 # ==========================================================
-# 3. MENÚ LATERAL
+# 3. MÓDULO PRINCIPAL CON EXTRACCIÓN DINÁMICA
 # ==========================================================
-with st.sidebar:
-    st.markdown("## 🏢 BogoApts V2")
-    st.markdown("---")
-    
-    cliente_sel = st.selectbox(
-        "Seleccione el Cliente:",
-        options=["BogoApts_CO", "Otro_Cliente_Prueba"]
-    )
-    
-    st.markdown("---")
-    vista_seleccionada = st.radio(
-        "Módulo:",
-        options=["Pacing", "ROAS"]
-    )
+try:
+    with st.spinner('Sincronizando con Data Lake...'):
+        df_g = pd.read_csv(url_google).fillna(0)
+        df_m = pd.read_csv(url_meta).fillna(0)
+        
+        df_g.columns = df_g.columns.str.strip()
+        df_m.columns = df_m.columns.str.strip()
+        
+        # Extracción dinámica de clientes de ambas plataformas
+        clientes_google = df_g['Account'].unique().tolist() if 'Account' in df_g.columns else []
+        clientes_meta = df_m['Account name'].unique().tolist() if 'Account name' in df_m.columns else []
+        
+        # Unimos las listas, quitamos duplicados y ordenamos alfabéticamente
+        todos_los_clientes = sorted(list(set([str(c) for c in clientes_google + clientes_meta if str(c) != '0'])))
 
-# ==========================================================
-# 4. MÓDULO PACING
-# ==========================================================
-if vista_seleccionada == "Pacing":
-    st.title(f"📊 Control de Pauta: {cliente_sel}")
-    
-    try:
-        with st.spinner('Sincronizando con Data Lake...'):
-            df_g = pd.read_csv(url_google).fillna(0)
-            df_m = pd.read_csv(url_meta).fillna(0)
-            
-            # Limpieza básica de nombres de columnas (quita espacios al principio y al final)
-            df_g.columns = df_g.columns.str.strip()
-            df_m.columns = df_m.columns.str.strip()
-            
-            # MODO DEBUG: Si no encuentra la columna, imprime lo que está viendo
-            if 'Account name' not in df_g.columns and 'Account name' not in df_m.columns:
-                st.warning("⚠️ No se encontró la columna 'Account name'. Esto es lo que Python está leyendo desde Google Sheets:")
-                st.write("**Columnas detectadas en Google Ads:**", df_g.columns.tolist())
-                st.write("**Columnas detectadas en Meta Ads:**", df_m.columns.tolist())
-                st.stop() # Detiene la ejecución aquí para que podamos ver el mensaje
-                
-            # FILTRADO DINÁMICO POR CLIENTE
-            df_g_cli = df_g[df_g['Account name'] == cliente_sel] if 'Account name' in df_g.columns else pd.DataFrame()
-            df_m_cli = df_m[df_m['Account name'] == cliente_sel] if 'Account name' in df_m.columns else pd.DataFrame()
-            
-            # CÁLCULOS DE INVERSIÓN
-            gasto_google = safe_sum(df_g_cli, 'Cost') if 'Cost' in df_g_cli.columns else safe_sum(df_g_cli, 'Amount spent')
-            gasto_meta = safe_sum(df_m_cli, 'Amount spent')
-            
-            total_ejecutado = gasto_google + gasto_meta
+    # --- MENÚ LATERAL ---
+    with st.sidebar:
+        st.markdown("## 🏢 BogoApts V2")
+        st.markdown("---")
+        
+        if todos_los_clientes:
+            cliente_sel = st.selectbox("Seleccione el Cliente:", options=todos_los_clientes)
+        else:
+            cliente_sel = st.selectbox("Seleccione el Cliente:", options=["Sin datos"])
+            st.warning("No se encontraron clientes en la base de datos.")
+        
+        st.markdown("---")
+        vista_seleccionada = st.radio("Módulo:", options=["Pacing", "ROAS"])
 
-        # VISUALIZACIÓN DE MÉTRICAS TOP
+    # --- VISTA PACING ---
+    if vista_seleccionada == "Pacing":
+        st.title(f"📊 Control de Pauta: {cliente_sel}")
+        
+        # Filtrado considerando los nombres exactos de las columnas por plataforma
+        df_g_cli = df_g[df_g['Account'] == cliente_sel] if 'Account' in df_g.columns else pd.DataFrame()
+        df_m_cli = df_m[df_m['Account name'] == cliente_sel] if 'Account name' in df_m.columns else pd.DataFrame()
+        
+        # Sumamos la inversión (ambos se exportaron como 'Cost')
+        gasto_google = safe_sum(df_g_cli, 'Cost')
+        gasto_meta = safe_sum(df_m_cli, 'Cost')
+        
+        total_ejecutado = gasto_google + gasto_meta
+
+        # MÉTRICAS VISUALES
         c1, c2, c3 = st.columns(3)
         with c1: st.metric("Inversión Google", f"${gasto_google:,.0f}")
         with c2: st.metric("Inversión Meta", f"${gasto_meta:,.0f}")
@@ -100,16 +97,28 @@ if vista_seleccionada == "Pacing":
         
         st.divider()
         
-        # TABLA DE DETALLE
+        # TABLA CON DETALLE DE CAMPAÑAS
         st.subheader("📝 Detalle de Campañas Automatizado")
-        cols_g = [col for col in ['Date', 'Campaign name', 'Cost', 'Amount spent'] if col in df_g_cli.columns]
-        if not cols_g: cols_g = df_g_cli.columns.tolist()
-        st.dataframe(df_g_cli[cols_g], use_container_width=True)
+        
+        # Mostramos Google si hay datos para este cliente
+        if not df_g_cli.empty:
+            st.markdown("**Google Ads**")
+            cols_g = [col for col in ['Date', 'Campaign name', 'Cost'] if col in df_g_cli.columns]
+            st.dataframe(df_g_cli[cols_g], use_container_width=True)
+            
+        # Mostramos Meta si hay datos para este cliente
+        if not df_m_cli.empty:
+            st.markdown("**Meta Ads**")
+            cols_m = [col for col in ['Date', 'Campaign name', 'Cost'] if col in df_m_cli.columns]
+            st.dataframe(df_m_cli[cols_m], use_container_width=True)
+            
+        if df_g_cli.empty and df_m_cli.empty:
+            st.info("Este cliente no tiene campañas activas registradas en las plataformas seleccionadas.")
 
-    except Exception as e:
-        st.error(f"Error de conexión: {e}")
-        st.info("Asegúrate de que el archivo de Google Sheets tenga el acceso compartido (Cualquiera con el enlace puede ver).")
+    elif vista_seleccionada == "ROAS":
+        st.title("📈 Histórico y ROAS")
+        st.info("Módulo en construcción para V2.")
 
-elif vista_seleccionada == "ROAS":
-    st.title("📈 Histórico y ROAS")
-    st.info("Módulo en construcción para V2.")
+except Exception as e:
+    st.error(f"Error crítico en la ejecución: {e}")
+    st.info("Verifica que el archivo de Google Sheets permita acceso como lector con el enlace.")
