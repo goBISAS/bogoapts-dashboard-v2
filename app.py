@@ -33,14 +33,14 @@ def get_csv_url(sheet_id, sheet_name):
 
 def safe_sum(df, column):
     if column in df.columns:
-        return pd.to_numeric(df[column].str.replace(r'[^\d.-]', '', regex=True), errors='coerce').sum()
+        return pd.to_numeric(df[column].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').sum()
     return 0
 
 # ==========================================================
 # 2. CONFIGURACIÓN DE DATOS (DATA LAKE)
 # ==========================================================
 # ID de tu archivo "Data Maestra - Supermetrics"
-ID_MAESTRO = "1Qkw-Fi3tLvY68maHxJOmHlX9sx0kOvNg-150YRE42W0" # Verifica que este sea el ID correcto
+ID_MAESTRO = "1Qkw-Fi3tLvY68maHxJOmHlX9sx0kOvNg-150YRE42W0"
 
 # URLs de las pestañas crudas de Supermetrics
 url_google = get_csv_url(ID_MAESTRO, "Raw_GoogleAds")
@@ -78,14 +78,12 @@ if vista_seleccionada == "Pacing":
             df_m = pd.read_csv(url_meta).fillna(0)
             
             # FILTRADO DINÁMICO POR CLIENTE
-            # Nota: Ajusta 'Account name' si en tu Sheets el nombre de la columna es diferente
             df_g_cli = df_g[df_g['Account name'] == cliente_sel]
             df_m_cli = df_m[df_m['Account name'] == cliente_sel]
             
-            # CÁLCULOS DE INVERSIÓN (Ajustar nombres de columnas según tu Sheets)
-            # Google usa 'Cost' usualmente, Meta usa 'Amount spent'
-            gasto_google = df_g_cli['Cost'].sum() if 'Cost' in df_g_cli.columns else 0
-            gasto_meta = df_m_cli['Amount spent'].sum() if 'Amount spent' in df_m_cli.columns else 0
+            # CÁLCULOS DE INVERSIÓN
+            gasto_google = safe_sum(df_g_cli, 'Cost') if 'Cost' in df_g_cli.columns else safe_sum(df_g_cli, 'Amount spent')
+            gasto_meta = safe_sum(df_m_cli, 'Amount spent')
             
             total_ejecutado = gasto_google + gasto_meta
 
@@ -99,8 +97,9 @@ if vista_seleccionada == "Pacing":
         
         # TABLA DE DETALLE
         st.subheader("📝 Detalle de Campañas Automatizado")
-        cols_mostrar = ['Date', 'Campaign name', 'Cost'] if 'Cost' in df_g_cli.columns else ['Date', 'Campaign name']
-        st.dataframe(df_g_cli, use_container_width=True)
+        cols_g = [col for col in ['Date', 'Campaign name', 'Cost', 'Amount spent'] if col in df_g_cli.columns]
+        if not cols_g: cols_g = df_g_cli.columns.tolist()
+        st.dataframe(df_g_cli[cols_g], use_container_width=True)
 
     except Exception as e:
         st.error(f"Error de conexión: {e}")
@@ -109,13 +108,3 @@ if vista_seleccionada == "Pacing":
 elif vista_seleccionada == "ROAS":
     st.title("📈 Histórico y ROAS")
     st.info("Módulo en construcción para V2.")
-
-**Pasos a seguir:**
-1. Borra todo el contenido de tu archivo `app.py` en GitHub.
-2. Pega este nuevo código.
-3. **Muy importante:** Asegúrate de que tu archivo de Google Sheets "Data Maestra" esté compartido como **"Cualquier persona con el enlace puede ver"** para que Streamlit pueda entrar sin contraseñas.
-4. Espera a que Streamlit Cloud se actualice automáticamente.
-
-¡Confírmame cuando logres ver los números de inversión (Google y Meta) en tu Dashboard de Streamlit! Si sale algún error, no te preocupes, revisaremos los nombres de las columnas.
-
-Tu presentación y tu app están en marcha. ¿Qué te parece el avance?
