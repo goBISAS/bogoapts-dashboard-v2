@@ -14,7 +14,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilos visuales Dark & Gold
 st.markdown("""
 <style>
 .main { background-color: #0d0d0d; }
@@ -26,7 +25,6 @@ h1, h2, h3, p, span { color: #ffffff; font-family: 'Urbanist', sans-serif; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- FUNCIONES DE CONEXIÓN ---
 def get_csv_url(sheet_id, sheet_name):
     sheet_enc = urllib.parse.quote(sheet_name)
     return f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_enc}"
@@ -39,10 +37,8 @@ def safe_sum(df, column):
 # ==========================================================
 # 2. CONFIGURACIÓN DE DATOS (DATA LAKE)
 # ==========================================================
-# ID de tu archivo "Data Maestra - Supermetrics"
 ID_MAESTRO = "1Qkw-Fi3tLvY68maHxJOmHlX9sx0kOvNg-150YRE42W0"
 
-# URLs de las pestañas crudas de Supermetrics
 url_google = get_csv_url(ID_MAESTRO, "Raw_GoogleAds")
 url_meta = get_csv_url(ID_MAESTRO, "Raw_MetaAds")
 
@@ -53,7 +49,6 @@ with st.sidebar:
     st.markdown("## 🏢 BogoApts V2")
     st.markdown("---")
     
-    # Lista de clientes (En el futuro esto puede ser dinámico leyendo la columna 'Account name')
     cliente_sel = st.selectbox(
         "Seleccione el Cliente:",
         options=["BogoApts_CO", "Otro_Cliente_Prueba"]
@@ -72,14 +67,24 @@ if vista_seleccionada == "Pacing":
     st.title(f"📊 Control de Pauta: {cliente_sel}")
     
     try:
-        # Carga de datos crudos
         with st.spinner('Sincronizando con Data Lake...'):
             df_g = pd.read_csv(url_google).fillna(0)
             df_m = pd.read_csv(url_meta).fillna(0)
             
+            # Limpieza básica de nombres de columnas (quita espacios al principio y al final)
+            df_g.columns = df_g.columns.str.strip()
+            df_m.columns = df_m.columns.str.strip()
+            
+            # MODO DEBUG: Si no encuentra la columna, imprime lo que está viendo
+            if 'Account name' not in df_g.columns and 'Account name' not in df_m.columns:
+                st.warning("⚠️ No se encontró la columna 'Account name'. Esto es lo que Python está leyendo desde Google Sheets:")
+                st.write("**Columnas detectadas en Google Ads:**", df_g.columns.tolist())
+                st.write("**Columnas detectadas en Meta Ads:**", df_m.columns.tolist())
+                st.stop() # Detiene la ejecución aquí para que podamos ver el mensaje
+                
             # FILTRADO DINÁMICO POR CLIENTE
-            df_g_cli = df_g[df_g['Account name'] == cliente_sel]
-            df_m_cli = df_m[df_m['Account name'] == cliente_sel]
+            df_g_cli = df_g[df_g['Account name'] == cliente_sel] if 'Account name' in df_g.columns else pd.DataFrame()
+            df_m_cli = df_m[df_m['Account name'] == cliente_sel] if 'Account name' in df_m.columns else pd.DataFrame()
             
             # CÁLCULOS DE INVERSIÓN
             gasto_google = safe_sum(df_g_cli, 'Cost') if 'Cost' in df_g_cli.columns else safe_sum(df_g_cli, 'Amount spent')
